@@ -63,6 +63,7 @@ docker run -d --name ttyd-tabs \
 
 Open <http://localhost:7681>, type your username, then your password at the SSH prompt.
 
+- The same image is on Docker Hub as `desoky725/ttyd-tabs`; use whichever registry you prefer.
 - On Docker Desktop (Windows/macOS) `host.docker.internal` already exists; `--add-host` is harmless there.
 - To connect somewhere else, add `-e SSH_HOST=nas.lan` (any host name or IP).
 - `-p 127.0.0.1:7681:7681` publishes the port on this machine only. Read [Security](#security) before exposing it any wider.
