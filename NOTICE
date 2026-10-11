@@ -1,0 +1,16 @@
+ttyd-tabs is built on the work of others. Thank you.
+
+ttyd (https://github.com/tsl0922/ttyd), MIT License, Copyright (c) Shuanglei Tao.
+  The terminal server this project is built around. The image is based on the unmodified official
+  tsl0922/ttyd image, and the UI plugs in through ttyd's own custom-index option (-I).
+  ttyd-tabs is an independent project; it is not affiliated with or endorsed by the ttyd authors.
+
+xterm.js (https://github.com/xtermjs/xterm.js) and its addons (fit, webgl, web-links), MIT License,
+  Copyright (c) The xterm.js authors. Vendored, pinned and checksum-verified in ttyd-ui/vendor/.
+  License text: /licenses/LICENSE.xterm
+
+trzsz.js (https://github.com/trzsz/trzsz.js), MIT License, Copyright (c) Lonny Wong.
+  Browser side of trzsz file transfer. License text: /licenses/LICENSE.trzsz
+
+tmux (https://github.com/tmux/tmux), ISC License. Installed from the distribution package.
+OpenSSH client, BSD-style licenses. Installed from the distribution package.

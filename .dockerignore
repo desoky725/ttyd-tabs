@@ -1,0 +1,9 @@
+.git
+.github
+docs
+**/node_modules
+ttyd-ui/dist
+ttyd-ui/test
+ttyd-ui/*.md
+*.md
+*.bak*

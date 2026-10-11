@@ -1,0 +1,17 @@
+# Minimal compose file for ttyd-tabs. Replace desoky725 with the GitHub user the image is published under.
+services:
+  ttyd:
+    image: ghcr.io/desoky725/ttyd-tabs:latest
+    container_name: ttyd-tabs
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7681:7681"           # localhost only: put a reverse proxy with auth in front (see README)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach the Docker host's sshd on Linux
+    environment:
+      SSH_HOST: host.docker.internal    # where the default "login as:" connects; any host name or IP works
+    volumes:
+      - ./hosts.conf:/etc/ttyd-hosts:ro # optional: saved hosts for the "+" menu
+      - ssh:/root/.ssh                  # optional: keeps known_hosts (and any key you add) across restarts
+volumes:
+  ssh:

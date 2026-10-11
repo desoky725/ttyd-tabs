@@ -1,0 +1,131 @@
+#!/bin/sh
+# ttyd-session: the ONLY program ttyd runs (ttyd -a ... /usr/local/bin/ttyd-session).
+#
+# With `ttyd -a`, anyone who can reach the websocket can pass arbitrary ?arg=... values, which ttyd
+# appends to our argv. So this script is a strict whitelist:
+#   ttyd-session attach <id> [host]   attach to (or create) tmux session ttyd-<id>, detaching other clients;
+#                              a new session runs the command saved under <host> in /etc/ttyd-hosts
+#                              (default: /login.sh). The client only names the key, never the command.
+#   ttyd-session kill   <id>   kill session ttyd-<id> (idempotent)
+#   ttyd-session hosts         print the saved hosts (key + label) between TTYD-HOSTS-BEGIN / TTYD-HOSTS-END
+#   ttyd-session list          print our sessions between TTYD-LIST-BEGIN / TTYD-LIST-END
+#   ttyd-session capture <id>  print the session's scrollback text between TTYD-CAP-BEGIN / TTYD-CAP-END
+# <id> must be exactly 't' + 10 lowercase hex digits. Anything else exits 2 without running anything
+# and without echoing the input. Input is never passed to a shell: it is only matched by `case`
+# patterns and, once validated, used as part of a tmux argument (always an argv element, no eval).
+#
+# tmux runs on its own socket (-L ttyd) with its own config, separate from any other tmux.
+
+LOGIN=/login.sh
+CONF=/etc/ttyd-tmux.conf
+HOSTS=/etc/ttyd-hosts   # lines: key | label | command
+
+tm() { tmux -L ttyd -f "$CONF" "$@"; }
+
+valid_id() {
+  case "$1" in
+    t[0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef][0123456789abcdef]) return 0 ;;
+  esac
+  return 1
+}
+
+# Host keys: a-z 0-9 _ - , 1..32 chars (matched with case patterns only).
+valid_host() {
+  case "$1" in
+    ''|*[!a-z0-9_-]*) return 1 ;;
+  esac
+  [ "${#1}" -le 32 ]
+}
+
+# host_cmd <key>: print the command saved for <key>; fail if there is none. Plain field comparison (awk -v with a
+# validated key), never pattern matching or eval on client input.
+host_cmd() {
+  [ -f "$HOSTS" ] || return 1
+  cmd=$(awk -F'|' -v k="$1" '
+    /^[ \t]*#/ { next }
+    { key=$1; gsub(/^[ \t]+|[ \t]+$/, "", key) }
+    key == k { c=$3; for (i=4; i<=NF; i++) c = c "|" $i; sub(/^[ \t]+/, "", c); sub(/[ \t\r]+$/, "", c); print c; exit }
+  ' "$HOSTS")
+  [ -n "$cmd" ] && printf '%s\n' "$cmd"
+}
+
+reject() { echo "ttyd-session: invalid request" >&2; exit 2; }
+
+[ "$#" -ge 1 ] || reject
+
+case "$1" in
+  attach)
+    [ "$#" -eq 2 ] || [ "$#" -eq 3 ] || reject
+    valid_id "$2" || reject
+    run="$LOGIN"
+    if [ "$#" -eq 3 ]; then
+      valid_host "$3" || reject
+      run=$(host_cmd "$3") || reject     # unknown key: refuse, even if the session already exists
+    fi
+    name="ttyd-$2"
+    # Create-if-missing under a lock: after a container restart the browser reattaches every tab at once,
+    # and concurrent first `new-session`s race to start the tmux server (one fails).
+    # (9>&- : the tmux server daemon must not inherit the lock fd, or it would hold the lock forever.)
+    ( flock 9; tm has-session -t "=$name" 2>/dev/null 9>&- || tm new-session -d -s "$name" "$run" 9>&- ) 9>/tmp/ttyd-session.lock
+    # -d: detach any other client (newest browser wins).
+    tm attach-session -d -t "=$name"
+    rc=$?
+    # ttyd decides between "process ended" (close 1000) and "abnormal" (1006) from the exit status, but it
+    # reads that status racily if the pty hits EOF right as we exit (stock ttyd 1.7.7, the exit code is still
+    # -1 -> 1006 for a clean exit, seen ~1 in 4 with tmux). Close our stdio first so ttyd sees EOF while we
+    # are still running, then exit shortly after so the status is collected the normal way.
+    exec <&- >&- 2>&-
+    sleep 0.3
+    exit "$rc"
+    ;;
+  kill)
+    [ "$#" -eq 2 ] && valid_id "$2" || reject
+    tm kill-session -t "=ttyd-$2" >/dev/null 2>&1
+    exit 0
+    ;;
+  list)
+    [ "$#" -eq 1 ] || reject
+    echo "TTYD-LIST-BEGIN"
+    # name created last-activity attached title, space separated (tmux turns tabs into '_' in -F output);
+    # the title is last because it may contain spaces; control characters are stripped
+    tm list-sessions -F '#{session_name} #{session_created} #{session_activity} #{session_attached} #{pane_title}' 2>/dev/null |
+      tr -d '\r\000-\010\013\014\016-\037\177' |
+      while IFS= read -r line; do
+        case "$line" in ttyd-t*) echo "$line" ;; esac
+      done
+    echo "TTYD-LIST-END"
+    # ttyd can close the websocket on process exit before it has read the last of the pty output (the END
+    # marker would be lost); stay alive briefly so it drains first.
+    sleep 0.3
+    exit 0
+    ;;
+  hosts)
+    [ "$#" -eq 1 ] || reject
+    echo "TTYD-HOSTS-BEGIN"
+    if [ -f "$HOSTS" ]; then
+      awk -F'|' '
+        /^[ \t]*#/ { next }
+        NF >= 3 { k=$1; l=$2; gsub(/^[ \t]+|[ \t\r]+$/, "", k); gsub(/^[ \t]+|[ \t\r]+$/, "", l); if (k != "" && l != "") print k " " l }
+      ' "$HOSTS" | tr -d '\000-\010\013\014\016-\037\177' | while IFS= read -r line; do
+        k=${line%% *}
+        valid_host "$k" && echo "$line"
+      done
+    fi
+    echo "TTYD-HOSTS-END"
+    sleep 0.3    # same ttyd exit race as in `list`
+    exit 0
+    ;;
+  capture)
+    [ "$#" -eq 2 ] && valid_id "$2" || reject
+    echo "TTYD-CAP-BEGIN"
+    # plain text of the whole history + visible screen (no escape sequences, wrapped lines joined);
+    # control characters other than newline/tab are stripped
+    tm capture-pane -p -J -S - -t "=ttyd-$2:" 2>/dev/null | tr -d '\r\000-\010\013\014\016-\037\177'
+    echo "TTYD-CAP-END"
+    sleep 0.3    # same ttyd exit race as in `list`
+    exit 0
+    ;;
+  *)
+    reject
+    ;;
+esac

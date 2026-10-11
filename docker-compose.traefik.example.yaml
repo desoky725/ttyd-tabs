@@ -1,0 +1,23 @@
+# ttyd-tabs behind Traefik with an authentication middleware. UNTESTED TEMPLATE: adapt the router, entrypoint,
+# certificate resolver and middleware names to your setup. The only ttyd-specific requirement is that the
+# websocket upgrade passes through (Traefik does this by default).
+services:
+  ttyd:
+    image: ghcr.io/desoky725/ttyd-tabs:latest
+    container_name: ttyd-tabs
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # no "ports:" here: only Traefik reaches the container
+    networks: [proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.ttyd.rule=Host(`terminal.example.com`)
+      - traefik.http.routers.ttyd.entrypoints=websecure
+      - traefik.http.routers.ttyd.tls.certresolver=letsencrypt
+      - traefik.http.routers.ttyd.middlewares=ttyd-auth     # forward-auth, basic auth, OIDC... your choice
+      - traefik.http.services.ttyd.loadbalancer.server.port=7681
+networks:
+  proxy:
+    external: true
