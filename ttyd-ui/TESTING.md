@@ -24,6 +24,12 @@ Run after `docker compose up -d --build ttyd`. Tick each box.
 - [ ] `exit` in a tab: red "closed", no auto-retry; pressing Enter starts a new session.
 - [ ] Reconnect button on an amber tab retries immediately.
 
+## Touch copy / paste / links (phone, ideally over plain http)
+
+- [ ] Key bar: Select, then drag over text selects it; tapping a word selects the word; Copy puts it on the clipboard (toast "Copied") or, if blocked, opens a box with the text selected.
+- [ ] Paste without https opens a box: long-press, Paste, Send writes it to the terminal.
+- [ ] Links lists the URLs in the output (also ones wrapped over several lines); Open starts a new browser tab, Copy copies.
+
 ## Clipboard (must not regress vs stock ttyd)
 - [ ] Selecting text copies it (paste it in another app to confirm).
 - [ ] Ctrl+Shift+C copies the selection (browser dev-tools must NOT open). Ctrl+C still interrupts.

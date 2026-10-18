@@ -130,6 +130,36 @@ class Session {
       this.pasteFromClipboard();
     }, true);
 
+    // Touch select mode (key bar "Select"): xterm draws its own text, so there are no native selection handles.
+    // While the mode is on, a finger drag selects text and a tap selects the word under it.
+    this.selectMode = false;
+    this._sel = null;
+    const selEv = (fn) => (e) => {
+      if (!this.selectMode || e.pointerType === 'mouse') return;
+      e.preventDefault();
+      e.stopPropagation();
+      fn(e);
+    };
+    el.addEventListener('pointerdown', selEv((e) => {
+      el.setPointerCapture(e.pointerId);
+      const c = this._cellAt(e);
+      this._sel = { from: c, x: e.clientX, y: e.clientY, moved: false };
+    }), true);
+    el.addEventListener('pointermove', selEv((e) => {
+      const s = this._sel;
+      if (!s) return;
+      if (!s.moved && Math.hypot(e.clientX - s.x, e.clientY - s.y) < 8) return;
+      s.moved = true;
+      this._selectRange(s.from, this._cellAt(e));
+    }), true);
+    const selEnd = selEv((e) => {
+      const s = this._sel;
+      this._sel = null;
+      if (s && !s.moved && e.type === 'pointerup') this._selectWord(s.from);
+    });
+    el.addEventListener('pointerup', selEnd, true);
+    el.addEventListener('pointercancel', selEnd, true);
+
     this.ro = new ResizeObserver(() => {
       cancelAnimationFrame(this._raf);
       this._raf = requestAnimationFrame(() => this.fit());
@@ -214,6 +244,40 @@ class Session {
     if (k === undefined) { this.keyTimer = null; return; }
     this._send(CMD.INPUT, k);
     this.keyTimer = setTimeout(() => this._drainKeys(), 8);
+  }
+
+  setSelectMode(on) {
+    this.selectMode = !!on;
+    this._sel = null;
+    this.el.classList.toggle('selecting', this.selectMode);
+    window.dispatchEvent(new CustomEvent('ttyd:mods'));
+  }
+
+  /** Buffer cell under a pointer event (row is an absolute buffer row, as term.select wants). */
+  _cellAt(e) {
+    const term = this.term;
+    const r = this.el.querySelector('.xterm-screen').getBoundingClientRect();
+    const clamp = (v, max) => Math.max(0, Math.min(max, v));
+    return {
+      col: clamp(Math.floor((e.clientX - r.left) / (r.width / term.cols)), term.cols - 1),
+      row: clamp(Math.floor((e.clientY - r.top) / (r.height / term.rows)), term.rows - 1) + term.buffer.active.viewportY,
+    };
+  }
+
+  _selectRange(a, b) {
+    const [s, e] = a.row < b.row || (a.row === b.row && a.col <= b.col) ? [a, b] : [b, a];
+    this.term.select(s.col, s.row, (e.row - s.row) * this.term.cols + e.col - s.col + 1);
+  }
+
+  _selectWord(c) {
+    const line = this.term.buffer.active.getLine(c.row);
+    if (!line) return;
+    const text = line.translateToString(false);
+    if (!text[c.col] || /\s/.test(text[c.col])) return;
+    let s = c.col, e = c.col;
+    while (s > 0 && !/\s/.test(text[s - 1])) s--;
+    while (e < text.length - 1 && !/\s/.test(text[e + 1])) e++;
+    this.term.select(s, c.row, e - s + 1);
   }
 
   copySelection() {

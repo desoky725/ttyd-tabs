@@ -23,7 +23,7 @@ the heavy lifting; this project adds the everyday comforts around it. See [Credi
 - **Themes**: Dracula (default), Tokyo Night, Nord, Gruvbox Dark, One Dark, Solarized Dark and Light, GitHub Light. Terminal, page and scrollbars switch together; saved per browser.
 - **Scrollback search** across the whole tmux history, with highlighted matches.
 - **Saved hosts**: a `+` menu of SSH targets you define in a file. The browser only ever sends the key, never a command.
-- **Touch key bar** for phones and tablets (Esc, Tab, Ctrl, Alt, arrows, `| ~ / \`...), one-shot Ctrl and Alt.
+- **Touch key bar** for phones and tablets (Esc, Tab, Ctrl, Alt, arrows, `| ~ / \`...), one-shot Ctrl and Alt. It also has **Select** (drag a finger over text, or tap a word), **Copy**, **Paste** and **Links** (lists the links in the terminal output, each with Open and Copy). Copy and Paste still work over plain http: if the browser blocks them, a box opens for the browser's own Copy / Paste menu.
 - **Broadcast input** to several tabs at once (Alt+B), with a clear red marker.
 - **File transfer** with [trzsz](https://github.com/trzsz/trzsz) (`trz` / `tsz`) on desktop Chromium over https.
 - Bell and new-output **badges** on background tabs, clickable links, copy on select, working paste (Ctrl+V and Ctrl+Shift+V), reconnect with backoff.
