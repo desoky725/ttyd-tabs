@@ -30,6 +30,13 @@ Run after `docker compose up -d --build ttyd`. Tick each box.
 - [ ] Paste without https opens a box: long-press, Paste, Send writes it to the terminal.
 - [ ] Links lists the URLs in the output (also ones wrapped over several lines); Open starts a new browser tab, Copy copies.
 
+## File transfer without https (needs trz/tsz on the server)
+
+- [ ] Plain http: drag a file from the desktop onto a pane; it highlights, `trz` runs and the file lands in the shell's directory.
+- [ ] Plain http: run `trz`; a sheet asks for files, choose one, it uploads. Escape/Cancel aborts cleanly. `trz -d` asks for a folder.
+- [ ] Plain http or phone: `tsz somefile` saves it through the browser's download.
+- [ ] Desktop Chromium over https still uses the native pickers.
+
 ## Clipboard (must not regress vs stock ttyd)
 - [ ] Selecting text copies it (paste it in another app to confirm).
 - [ ] Ctrl+Shift+C copies the selection (browser dev-tools must NOT open). Ctrl+C still interrupts.
