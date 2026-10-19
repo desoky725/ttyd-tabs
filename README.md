@@ -25,7 +25,7 @@ the heavy lifting; this project adds the everyday comforts around it. See [Credi
 - **Saved hosts**: a `+` menu of SSH targets you define in a file. The browser only ever sends the key, never a command.
 - **Touch key bar** for phones and tablets (Esc, Tab, Ctrl, Alt, arrows, `| ~ / \`...), one-shot Ctrl and Alt. It also has **Select** (drag a finger over text, or tap a word), **Copy**, **Paste** and **Links** (lists the links in the terminal output, each with Open and Copy). Copy and Paste still work over plain http: if the browser blocks them, a box opens for the browser's own Copy / Paste menu.
 - **Broadcast input** to several tabs at once (Alt+B), with a clear red marker.
-- **File transfer** with [trzsz](https://github.com/trzsz/trzsz) (`trz` / `tsz`) on desktop Chromium over https.
+- **File transfer** with [trzsz](https://github.com/trzsz/trzsz) (`trz` / `tsz`): drop files on a pane to upload them, or run `trz` / `tsz`. Works over plain http and on phones too. Install trzsz on the machine you transfer to or from; the image does not ship it.
 - Bell and new-output **badges** on background tabs, clickable links, copy on select, working paste (Ctrl+V and Ctrl+Shift+V), reconnect with backoff.
 - All URLs are relative, so it works the same behind a domain, on a LAN IP, over Tailscale, or under a reverse-proxy sub-path.
 
@@ -144,7 +144,7 @@ ignores everything else. It runs nothing else and does not need the Docker socke
 ## Limitations
 
 - Sessions live in the container: recreating or upgrading it ends them. Tabs reconnect and start fresh shells.
-- File transfer (trzsz) needs the browser's File System Access API (desktop Chromium over https or localhost). Downloading from an SSH host that is not running tmux is known to corrupt the file.
+- File transfer (trzsz) needs `trz` / `tsz` installed on the server or SSH host. Without the browser's File System Access API (plain http, phones, Firefox, Safari) uploads use a file chooser and downloads become normal browser downloads, held in memory until complete (limit 1 GiB). Downloading from an SSH host that is not running tmux is known to corrupt the file.
 - Right-click paste and remote clipboard copy (OSC 52) need https; Ctrl+V and Ctrl+Shift+V work everywhere.
 - tmux windows and panes are intentionally not exposed (splits are done by the UI), and there is no tmux prefix key.
 - Alt+Left/Right and Alt+1..9 are taken by the page and do not reach the shell.

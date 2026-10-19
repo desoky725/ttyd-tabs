@@ -1,6 +1,7 @@
 'use strict';
 
 Themes.applyChrome(Themes.currentId());
+Transfer.install();   // file pickers for trz/tsz where the browser has none (plain http, phones, Firefox, Safari)
 
 const tabs = new Tabs(
   document.getElementById('tabs'),

@@ -160,6 +160,23 @@ class Session {
     el.addEventListener('pointerup', selEnd, true);
     el.addEventListener('pointercancel', selEnd, true);
 
+    // Drop files on the pane = upload them with trzsz (types `trz` for you; the server needs trz installed).
+    // Needs no file-picker API, so it works over plain http.
+    const hasFiles = (e) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    const paneEl = () => el.closest('.leaf');
+    let dragDepth = 0;
+    const endDrag = () => { dragDepth = 0; const p = paneEl(); if (p) p.classList.remove('dropping'); };
+    el.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; const p = paneEl(); if (p) p.classList.add('dropping'); });
+    el.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    el.addEventListener('dragleave', (e) => { if (hasFiles(e) && --dragDepth <= 0) endDrag(); });
+    el.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      endDrag();
+      if (this.state !== 'connected') { this.cb.onNotice('Not connected.'); return; }
+      this.trzsz.uploadFiles(e.dataTransfer.items).catch((err) => this.cb.onNotice('Upload failed: ' + ((err && err.message) || err)));
+    });
+
     this.ro = new ResizeObserver(() => {
       cancelAnimationFrame(this._raf);
       this._raf = requestAnimationFrame(() => this.fit());

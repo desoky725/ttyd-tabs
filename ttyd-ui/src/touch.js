@@ -38,12 +38,21 @@ const TouchTools = (() => {
   };
   const onEsc = (e) => { if (e.key === 'Escape') closeSheet(); };
 
+  let onClose = null;
   function closeSheet() {
-    if (box) { box.remove(); box = null; document.removeEventListener('keydown', onEsc, true); }
+    if (!box) return;
+    box.remove();
+    box = null;
+    document.removeEventListener('keydown', onEsc, true);
+    const cb = onClose;
+    onClose = null;
+    if (cb) cb();
   }
 
-  function openSheet(title) {
+  /** onDismiss runs whenever the sheet closes, however it was closed. */
+  function openSheet(title, onDismiss) {
     closeSheet();
+    onClose = onDismiss || null;
     box = h('div');
     box.id = 'sheet-box';
     box.addEventListener('pointerdown', (e) => { if (e.target === box) closeSheet(); });
@@ -163,5 +172,5 @@ const TouchTools = (() => {
     card.appendChild(row);
   }
 
-  return { copyText, showCopySheet, showPasteSheet, showLinks, findLinks, closeSheet };
+  return { copyText, showCopySheet, showPasteSheet, showLinks, findLinks, closeSheet, openSheet, button, h };
 })();
