@@ -66,6 +66,7 @@ class Palette {
         else tabs.toast('Paste from the palette needs https; use Ctrl+V or the browser paste menu instead.');
       } },
       { name: 'Send literal ^V (quoted insert)', hint: 'Ctrl+Alt+V', run: () => t && t.session.type('\x16') },
+      { name: 'Links in the terminal (open / copy)', run: () => t && TouchTools.showLinks(t.session.term) },
       { name: keybar.el.hidden ? 'Show key bar' : 'Hide key bar', run: () => keybar.toggle() },
       { name: 'Snippet: add...', run: () => this.addSnippet() },
     ];

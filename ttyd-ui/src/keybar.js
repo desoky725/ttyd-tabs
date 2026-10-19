@@ -33,7 +33,7 @@ class KeyBar {
       ['←', A('D')], ['↓', A('B')], ['↑', A('A')], ['→', A('C')],
       ['Home', '\x1b[H'], ['End', '\x1b[F'], ['PgUp', '\x1b[5~'], ['PgDn', '\x1b[6~'],
       ['|', '|'], ['~', '~'], ['/', '/'], ['\\', '\\'], ['-', '-'], ['_', '_'], ['`', '`'], [':', ':'],
-      ['Paste', 'paste'],
+      ['Paste', 'paste'], ['Select', 'select'], ['Copy', 'copy'], ['Links', 'links'],
     ];
     for (const [label, val] of keys) {
       const b = document.createElement('button');
@@ -55,7 +55,19 @@ class KeyBar {
       s.setMod(btn.dataset.mod, !s.mods[btn.dataset.mod]);
     } else if (val === 'paste') {
       if (navigator.clipboard && navigator.clipboard.readText) s.pasteFromClipboard();
-      else this.tabs.toast('Paste button needs https; use the browser paste menu instead.');
+      else { TouchTools.showPasteSheet((text) => { s.term.paste(text); s.term.focus(); }); return; }
+    } else if (val === 'select') {
+      s.setSelectMode(!s.selectMode);
+      if (s.selectMode) this.tabs.toast('Drag over text to select it, or tap a word. Then tap Copy.');
+      return;   // leave the soft keyboard as it is
+    } else if (val === 'copy') {
+      const text = s.term.getSelection();
+      if (!text) { this.tabs.toast('Nothing selected. Tap Select, then drag over the text.'); return; }
+      s.setSelectMode(false);
+      TouchTools.copyText(text).then((ok) => { if (ok) this.tabs.toast('Copied'); else TouchTools.showCopySheet(text); });
+    } else if (val === 'links') {
+      TouchTools.showLinks(s.term);
+      return;
     } else {
       s.type(typeof val === 'function' ? val() : val);
     }
@@ -67,6 +79,11 @@ class KeyBar {
     for (const b of this.el.querySelectorAll('button[data-mod]')) {
       b.classList.toggle('armed', !!(t && t.session.mods[b.dataset.mod]));
       b.setAttribute('aria-pressed', b.classList.contains('armed') ? 'true' : 'false');
+    }
+    const sel = this.el.querySelector('button[data-key="Select"]');
+    if (sel) {
+      sel.classList.toggle('armed', !!(t && t.session.selectMode));
+      sel.setAttribute('aria-pressed', sel.classList.contains('armed') ? 'true' : 'false');
     }
   }
 }

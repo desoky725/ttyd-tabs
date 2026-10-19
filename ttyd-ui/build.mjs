@@ -34,6 +34,7 @@ const js = [
   read('src', 'control.js'),
   read('src', 'search.js'),
   read('src', 'hosts.js'),
+  read('src', 'touch.js'),
   read('src', 'keybar.js'),
   read('src', 'palette.js'),
   read('src', 'tabs.js'),
