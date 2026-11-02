@@ -160,6 +160,8 @@ class Session {
     el.addEventListener('pointerup', selEnd, true);
     el.addEventListener('pointercancel', selEnd, true);
 
+    this._initTouchScroll(el);
+
     this.ro = new ResizeObserver(() => {
       cancelAnimationFrame(this._raf);
       this._raf = requestAnimationFrame(() => this.fit());
@@ -224,16 +226,66 @@ class Session {
     if (!this.persistent || this.term.buffer.active.type !== 'alternate' || this.term.modes.mouseTrackingMode !== 'none') return true;
     // deltaMode 0 = pixels (~17px per line), 1 = lines, 2 = pages
     const lines = e.deltaMode === 0 ? e.deltaY / 17 : e.deltaMode === 1 ? e.deltaY : e.deltaY * this.term.rows;
+    this._scrollTmux(lines);
+    return false;
+  }
+
+  /** Scroll tmux's history by `lines` (negative = up) with the stateless keys bound in ttyd-tmux.conf. */
+  _scrollTmux(lines) {
     this.wheelAcc += lines;
     // Each key sequence = 3 lines (see ttyd-tmux.conf). They are released one by one, 8 ms apart (see _queueKeys).
     const n = Math.min(Math.trunc(Math.abs(this.wheelAcc) / 3), 8);
-    if (n === 0) return false;
+    if (n === 0) return;
     const up = this.wheelAcc < 0;
     this.wheelAcc %= 3; // keep only the sub-step remainder; distance beyond the cap is dropped
     if (up) this.scrolled = true;
     for (let i = 0; i < n; i++) this.keyQueue.push(up ? TMUX_KEY.up : TMUX_KEY.down);
     if (!this.keyTimer) this._drainKeys();
-    return false;
+  }
+
+  // One-finger swipe = mouse wheel. A touch screen produces no wheel events, so without this nothing scrolls.
+  //  - the app asked for mouse events (Claude Code, vim with mouse=a...): send SGR wheel reports to it;
+  //  - tmux alternate screen: scroll tmux's history, exactly like the wheel does;
+  //  - otherwise: xterm's own scrollback.
+  // A tap (no movement past the threshold) is left alone so it still focuses the terminal / opens the keyboard.
+  _initTouchScroll(el) {
+    let t = null;
+    el.addEventListener('touchstart', (e) => {
+      if (this.selectMode || e.touches.length !== 1) { t = null; return; }
+      t = { y: e.touches[0].clientY, acc: 0, moved: false };
+    }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      if (!t || this.selectMode || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      if (!t.moved && Math.abs(y - t.y) < 8) return;
+      t.moved = true;
+      e.preventDefault();
+      const rect = el.querySelector('.xterm-screen').getBoundingClientRect();
+      const cellH = rect.height / this.term.rows || 17;
+      t.acc += (t.y - y) / cellH;   // finger moving up = content moving up = wheel down = positive
+      t.y = y;
+      const lines = Math.trunc(t.acc);
+      if (lines === 0) return;
+      t.acc -= lines;
+      this._touchScroll(lines, e.touches[0]);
+    }, { passive: false });
+    const end = () => { t = null; };
+    el.addEventListener('touchend', end, { passive: true });
+    el.addEventListener('touchcancel', end, { passive: true });
+  }
+
+  _touchScroll(lines, touch) {
+    const term = this.term;
+    if (term.modes.mouseTrackingMode !== 'none') {
+      const c = this._cellAt({ clientX: touch.clientX, clientY: touch.clientY });
+      const btn = lines < 0 ? 64 : 65;
+      const rep = `\x1b[<${btn};${c.col + 1};${(c.row - term.buffer.active.viewportY) + 1}M`;
+      for (let i = 0, n = Math.min(Math.abs(lines), 8); i < n; i++) this._send(CMD.INPUT, rep);
+    } else if (this.persistent && term.buffer.active.type === 'alternate') {
+      this._scrollTmux(lines);
+    } else {
+      term.scrollLines(lines);
+    }
   }
 
   // tmux 3.0a mishandles several escape sequences that arrive back-to-back: in a tight burst only the first
