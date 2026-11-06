@@ -437,6 +437,7 @@ class Session {
     this.pending = 0;
     this.ws.send(this.enc.encode(JSON.stringify({ AuthToken: this.token, columns: this.term.cols, rows: this.term.rows })));
     this._setState('connected');
+    this._smooth.warm(1200);   // history ready before the first swipe
     if (this.active && this.focused) this.term.focus();
   }
 
@@ -554,6 +555,7 @@ class Session {
       this.fit();
       requestAnimationFrame(() => { if (this.active) this.fit(); });
       if (focused) this.term.focus();
+      this._smooth.warm(800);
     } else {
       this._smooth.close();
       this._disableWebgl();

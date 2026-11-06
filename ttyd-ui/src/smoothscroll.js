@@ -40,9 +40,14 @@ class SmoothScroll {
     // tmux repaints its status line (clock) every so often: small writes without a line break leave the history as is
     if (data && data.length < 200 && !(typeof data === 'string' ? /[\r\n]/.test(data) : data.includes(10) || data.includes(13))) return;
     this.outSeq++;
+    this.warm(400);
+  }
+
+  /** Fetch the history ahead after ms (on a touch screen), e.g. after connecting or switching to the tab. */
+  warm(ms) {
     if (!COARSE) return;
     clearTimeout(this.warmTimer);
-    this.warmTimer = setTimeout(() => this.prefetch(), 400);
+    this.warmTimer = setTimeout(() => this.prefetch(), ms);
   }
 
   /** Fetch the history ahead (when a finger lands, or after output went quiet) unless a current copy exists. */
