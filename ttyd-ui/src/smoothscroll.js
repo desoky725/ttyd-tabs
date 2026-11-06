@@ -42,7 +42,7 @@ class SmoothScroll {
     this.outSeq++;
     if (!COARSE) return;
     clearTimeout(this.warmTimer);
-    this.warmTimer = setTimeout(() => this.prefetch(), 1200);
+    this.warmTimer = setTimeout(() => this.prefetch(), 400);
   }
 
   /** Fetch the history ahead (when a finger lands, or after output went quiet) unless a current copy exists. */
@@ -73,8 +73,8 @@ class SmoothScroll {
     const seq = ++this.seq;
     let data = null;
     const pre = this.pre && (this.pre.seq === this.outSeq || performance.now() - this.pre.at < 2000) ? this.pre.p : null;
-    this.pre = null;
-    try { data = await (pre || captureAnsi(this.s.id)); } catch (e) { /* fall back below */ }
+    if (!pre) this.pre = { p: captureAnsi(this.s.id), at: performance.now(), seq: this.outSeq };   // kept: the next swipe can reuse it
+    try { data = await (pre || this.pre.p); } catch (e) { this.pre = null; /* fall back below */ }
     if (seq !== this.seq || this.state !== 'loading') return;
     const rows = this.s.term.rows;
     const pending = this.pending;
@@ -101,7 +101,6 @@ class SmoothScroll {
   }
 
   close() {
-    if (this.state !== 'idle') this.noteOutput();   // the screen is about to change: refresh the stored history
     this.seq++;
     this.pending = 0;
     this.state = 'idle';
