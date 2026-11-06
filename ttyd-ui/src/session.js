@@ -249,27 +249,49 @@ class Session {
   //  - otherwise: xterm's own scrollback.
   // A tap (no movement past the threshold) is left alone so it still focuses the terminal / opens the keyboard.
   _initTouchScroll(el) {
+    const GAIN = 2.5;          // lines scrolled per line of finger travel: a phone swipe is short
     let t = null;
+    let fling = 0;             // requestAnimationFrame id of the momentum loop
+    const stopFling = () => { if (fling) { cancelAnimationFrame(fling); fling = 0; } };
     el.addEventListener('touchstart', (e) => {
+      stopFling();
       if (this.selectMode || e.touches.length !== 1) { t = null; return; }
-      t = { y: e.touches[0].clientY, acc: 0, moved: false };
+      t = { y: e.touches[0].clientY, x: e.touches[0].clientX, acc: 0, moved: false, v: 0, ts: e.timeStamp };
     }, { passive: true });
     el.addEventListener('touchmove', (e) => {
       if (!t || this.selectMode || e.touches.length !== 1) return;
-      const y = e.touches[0].clientY;
-      if (!t.moved && Math.abs(y - t.y) < 8) return;
+      const tc = e.touches[0];
+      if (!t.moved && Math.abs(tc.clientY - t.y) < 8) return;
       t.moved = true;
       e.preventDefault();
       const rect = el.querySelector('.xterm-screen').getBoundingClientRect();
       const cellH = rect.height / this.term.rows || 17;
-      t.acc += (t.y - y) / cellH;   // finger moving up = content moving up = wheel down = positive
-      t.y = y;
+      const d = (t.y - tc.clientY) / cellH * GAIN;   // finger moving up = content moving up = wheel down = positive
+      const dt = Math.max(1, e.timeStamp - t.ts);
+      t.v = 0.8 * t.v + 0.2 * (d / dt);              // smoothed lines per ms
+      t.ts = e.timeStamp;
+      t.y = tc.clientY; t.x = tc.clientX;
+      t.acc += d;
       const lines = Math.trunc(t.acc);
       if (lines === 0) return;
       t.acc -= lines;
-      this._touchScroll(lines, e.touches[0]);
+      this._touchScroll(lines, tc);
     }, { passive: false });
-    const end = () => { t = null; };
+    const end = (e) => {
+      const s = t;
+      t = null;
+      if (!s || !s.moved || e.type === 'touchcancel' || Math.abs(s.v) < 0.01 || e.timeStamp - s.ts > 80) return;
+      // momentum: keep scrolling with the release speed, slowing down by ~6% per frame
+      let v = Math.max(-0.12, Math.min(0.12, s.v)), acc = 0, last = performance.now();
+      const step = (now) => {
+        acc += v * (now - last); last = now;
+        v *= 0.94;
+        const lines = Math.trunc(acc);
+        if (lines) { acc -= lines; this._touchScroll(lines, { clientX: s.x, clientY: s.y }); }
+        fling = Math.abs(v) > 0.004 ? requestAnimationFrame(step) : 0;
+      };
+      fling = requestAnimationFrame(step);
+    };
     el.addEventListener('touchend', end, { passive: true });
     el.addEventListener('touchcancel', end, { passive: true });
   }
