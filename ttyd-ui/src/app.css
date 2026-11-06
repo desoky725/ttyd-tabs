@@ -51,6 +51,8 @@ input.rename { flex: 1; min-width: 0; width: 100%; font: inherit; color: var(--f
 .pane { position: absolute; inset: 0; visibility: hidden; }
 .pane.active { visibility: visible; }
 .term { width: 100%; height: 100%; }
+/* The page scrolls itself (one-finger swipe, see Session._initTouchScroll): keep the browser from claiming the gesture and cancelling it. */
+.term, .term * { touch-action: none; }
 .xterm-viewport { background-color: transparent !important; }
 /* Scrollbars follow the theme (color-scheme is set per theme; these refine it) */
 * { scrollbar-color: var(--hover) transparent; }
