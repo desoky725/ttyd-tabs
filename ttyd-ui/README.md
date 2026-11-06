@@ -133,6 +133,10 @@ Vendored: fit 0.10.0, webgl 0.18.0, web-links 0.11.0, trzsz.js 1.1.6 (checksumme
   colours (`capture-ansi`) and shows them in a layer over the terminal (`src/smoothscroll.js`) that scrolls by pixel, 1:1 with
   the finger plus a fling; scrolling back to the bottom, typing or a tap removes it. Full-screen apps and apps with mouse
   reporting (Claude's full-screen view) get the key / wheel-report scrolling instead, which can only move line by line.
+  **Touch selection:** double-tap a word to select it (`src/touchselect.js`), drag the two handles to extend, then tap **Copy** in
+  the bar at the top; nothing is copied before that. The selection follows you onto the scroll layer when you swipe back (a
+  handle dragged to the top/bottom edge of the layer scrolls it), and you can double-tap words in the layer too. Limits: wide
+  characters can shift columns in the layer, and wrapped lines copy as separate lines.
 - **No tmux prefix key** by design; tmux windows/panes are not available (splits are done by the UI, one tmux session per pane).
 - **Right-click paste** needs a secure context (https or localhost); on plain-http LAN/Tailscale it falls back to the
   browser's own menu, and Ctrl+Shift+V works everywhere. **OSC 52 remote copy** (e.g. vim/tmux `set-clipboard`) also needs

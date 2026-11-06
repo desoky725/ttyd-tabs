@@ -105,8 +105,11 @@ class Session {
         if (d === '\r') this.reconnectNow(); // Enter restarts an ended session, like stock ttyd
         return;
       }
-      this._smooth.outSeq++;   // typing changes the screen
-      this._smooth.close();
+      if (d !== '\x1b[I' && d !== '\x1b[O') {   // (focus reports are not typing)
+        this._smooth.outSeq++;   // typing changes the screen
+        this._touchSel.clear();
+        this._smooth.close();
+      }
       this.keyQueue.length = 0; // typing wins over scrolling still in flight
       if (this.scrolled) { this.scrolled = false; this._send(CMD.INPUT, TMUX_KEY.cancel); } // leave scrollback first
       d = this._applyMods(d);
@@ -122,6 +125,7 @@ class Session {
     // Copy-on-select, same mechanism as stock ttyd (xterm mirrors the selection into its textarea).
     term.onSelectionChange(() => {
       if (!term.hasSelection()) return;
+      if (this._touchSel && this._touchSel.active) return;   // touch selection: only the Copy button copies
       try { document.execCommand('copy'); } catch (e) { /* ignore */ }
     });
     term.attachCustomKeyEventHandler((e) => this._onKey(e));
@@ -130,6 +134,7 @@ class Session {
     // Right-click paste. Needs the async clipboard API (secure context). Without it we leave
     // xterm's own handler alone, which opens the native menu with a working "Paste".
     el.addEventListener('contextmenu', (e) => {
+      if (this._touchSel && this._touchSel.busy()) { e.preventDefault(); e.stopPropagation(); return; }   // a double-tap selects, it does not paste
       if (!navigator.clipboard || !navigator.clipboard.readText) return;
       e.preventDefault();
       e.stopPropagation();
@@ -167,6 +172,7 @@ class Session {
     el.addEventListener('pointercancel', selEnd, true);
 
     this._initTouchScroll(el);
+    this._touchSel = new TouchSelect(this);   // double-tap + handles, see touchselect.js
 
     this.ro = new ResizeObserver(() => {
       cancelAnimationFrame(this._raf);
@@ -297,7 +303,7 @@ class Session {
     const end = (e) => {
       const s = t;
       t = null;
-      if (s && !s.moved && e.type === 'touchend' && this._smooth.active) { this._smooth.close(); return; }   // tap = back to the live screen
+      if (s && !s.moved && e.type === 'touchend' && this._smooth.active) { this._touchSel.layerTap(); return; }   // tap = back to the live screen (after a pause: a second tap selects)
       if (!s || !s.moved || e.type === 'touchcancel' || Math.abs(s.v) < 0.01 || e.timeStamp - s.ts > 80) return;
       // momentum: keep scrolling with the release speed, slowing down by ~5% per frame
       let v = Math.max(-0.12, Math.min(0.12, s.v)), acc = 0, last = performance.now();
@@ -347,6 +353,7 @@ class Session {
 
   setSelectMode(on) {
     this.selectMode = !!on;
+    if (on && this._touchSel) this._touchSel.clear();
     this._sel = null;
     this.el.classList.toggle('selecting', this.selectMode);
     window.dispatchEvent(new CustomEvent('ttyd:mods'));
@@ -368,25 +375,49 @@ class Session {
     this.term.select(s.col, s.row, (e.row - s.row) * this.term.cols + e.col - s.col + 1);
   }
 
-  _selectWord(c) {
+  /** The non-blank run of characters around a cell, as { s, e, row } (columns), or null on blank space. */
+  _wordAt(c) {
     const line = this.term.buffer.active.getLine(c.row);
-    if (!line) return;
+    if (!line) return null;
     const text = line.translateToString(false);
-    if (!text[c.col] || /\s/.test(text[c.col])) return;
+    if (!text[c.col] || /\s/.test(text[c.col])) return null;
     let s = c.col, e = c.col;
     while (s > 0 && !/\s/.test(text[s - 1])) s--;
     while (e < text.length - 1 && !/\s/.test(text[e + 1])) e++;
-    this.term.select(s, c.row, e - s + 1);
+    return { s, e, row: c.row };
   }
 
-  copySelection() {
-    const text = this.term.getSelection();
-    if (!text) return;
+  _selectWord(c) {
+    const w = this._wordAt(c);
+    if (w) this.term.select(w.s, w.row, w.e - w.s + 1);
+  }
+
+  /** Copy the selected text. @returns Promise<boolean> whether it reached the clipboard */
+  copySelection() { return this.copyText(this.term.getSelection()); }
+
+  /** Copy text to the clipboard. @returns Promise<boolean> whether it got there */
+  copyText(text) {
+    if (!text) return Promise.resolve(false);
+    const legacy = () => {
+      // No async clipboard (plain http): copy from a temporary read-only box, so it works without terminal focus and
+      // without opening the keyboard.
+      const prev = document.activeElement;
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.readOnly = true;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { /* ignore */ }
+      ta.remove();
+      if (prev && prev.focus) prev.focus({ preventScroll: true });
+      return ok;
+    };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(() => document.execCommand('copy'));
-    } else {
-      try { document.execCommand('copy'); } catch (e) { /* ignore */ }
+      return navigator.clipboard.writeText(text).then(() => true, () => legacy());
     }
+    return Promise.resolve(legacy());
   }
 
   pasteFromClipboard() {
@@ -558,6 +589,7 @@ class Session {
       this._smooth.warm(800);
     } else {
       this._smooth.close();
+      this._touchSel.clear();
       this._disableWebgl();
     }
   }
