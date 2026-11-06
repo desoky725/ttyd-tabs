@@ -233,12 +233,13 @@ class Session {
   /** Scroll tmux's history by `lines` (negative = up) with the stateless keys bound in ttyd-tmux.conf. */
   _scrollTmux(lines) {
     this.wheelAcc += lines;
-    // Each key sequence = 1 line (see ttyd-tmux.conf), so the view moves in single-line steps. They are released one
-    // by one, 8 ms apart (see _drainKeys); the backlog is capped so scrolling stops soon after the finger does.
-    const n = Math.min(Math.trunc(Math.abs(this.wheelAcc)), 24, Math.max(0, 40 - this.keyQueue.length));
-    if (n === 0) { this.wheelAcc %= 1; return; }
+    // Each key sequence = 2 lines (see ttyd-tmux.conf): fine enough to look smooth, coarse enough to keep up with a
+    // fast flick. They are released one by one, 4 ms apart (see _drainKeys); the backlog is capped so scrolling
+    // stops soon after the finger does.
+    const n = Math.min(Math.trunc(Math.abs(this.wheelAcc) / 2), 40, Math.max(0, 80 - this.keyQueue.length));
+    if (n === 0) { this.wheelAcc %= 2; return; }
     const up = this.wheelAcc < 0;
-    this.wheelAcc %= 1; // keep only the sub-line remainder; distance beyond the cap is dropped
+    this.wheelAcc %= 2; // keep only the sub-step remainder; distance beyond the cap is dropped
     if (up) this.scrolled = true;
     for (let i = 0; i < n; i++) this.keyQueue.push(up ? TMUX_KEY.up : TMUX_KEY.down);
     if (!this.keyTimer) this._drainKeys();
@@ -282,11 +283,11 @@ class Session {
       const s = t;
       t = null;
       if (!s || !s.moved || e.type === 'touchcancel' || Math.abs(s.v) < 0.01 || e.timeStamp - s.ts > 80) return;
-      // momentum: keep scrolling with the release speed, slowing down by ~6% per frame
+      // momentum: keep scrolling with the release speed, slowing down by ~5% per frame
       let v = Math.max(-0.12, Math.min(0.12, s.v)), acc = 0, last = performance.now();
       const step = (now) => {
         acc += v * (now - last); last = now;
-        v *= 0.94;
+        v *= 0.95;
         const lines = Math.trunc(acc);
         if (lines) { acc -= lines; this._touchScroll(lines, { clientX: s.x, clientY: s.y }); }
         fling = Math.abs(v) > 0.004 ? requestAnimationFrame(step) : 0;
@@ -313,12 +314,12 @@ class Session {
 
   // tmux 3.0a mishandles several escape sequences that arrive back-to-back: in a tight burst only the first
   // ~2 are treated as keys and the rest are forwarded to the shell as text (";3~;3~..."). Measured: no
-  // problem from 2 ms spacing up, so scroll keys are paced at 8 ms.
+  // problem from 2 ms spacing up, so scroll keys are paced at 4 ms.
   _drainKeys() {
     const k = this.keyQueue.shift();
     if (k === undefined) { this.keyTimer = null; return; }
     this._send(CMD.INPUT, k);
-    this.keyTimer = setTimeout(() => this._drainKeys(), 8);
+    this.keyTimer = setTimeout(() => this._drainKeys(), 4);
   }
 
   setSelectMode(on) {
