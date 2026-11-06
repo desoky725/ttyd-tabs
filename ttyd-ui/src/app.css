@@ -161,6 +161,16 @@ input.rename { flex: 1; min-width: 0; width: 100%; font: inherit; color: var(--f
 /* Touch select mode: a finger drag selects text instead of scrolling */
 .selecting, .selecting * { touch-action: none !important; -webkit-user-select: none; user-select: none; }
 
+/* Touch selection (long-press): handles and the Copy bar are drawn over the terminal */
+.ts-handle { position: absolute; z-index: 5; width: 22px; height: 22px; margin: 2px 0 0 -11px; border-radius: 0 50% 50% 50%; transform: rotate(45deg) scale(.8); background: #4d9fff; border: 2px solid #fff; box-shadow: 0 1px 4px #0009; touch-action: none; }
+.ts-handle::before { content: ''; position: absolute; inset: -14px; }
+.ts-handle[hidden], .ts-bar[hidden] { display: none; }
+.ts-bar { position: absolute; z-index: 6; top: 6px; left: 0; right: 0; margin: 0 auto; width: fit-content; max-width: calc(100% - 12px); display: flex; align-items: stretch; background: #20242c; border: 1px solid #556; border-radius: 8px; box-shadow: 0 2px 10px #000b; overflow: hidden; }
+.ts-text { flex: 1 1 auto; min-width: 0; align-self: center; padding: 0 12px; font-size: 13px; color: #cfd6e4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55vw; }
+.ts-bar button { flex: none; font: inherit; font-size: 15px; color: #fff; background: none; border: 0; padding: 10px 14px; }
+.ts-bar button { border-left: 1px solid #445; }
+.ts-bar button:active { background: #4d9fff55; }
+
 /* Bottom sheet (copy fallback, paste box, links list) */
 #sheet-box { position: fixed; inset: 0; z-index: 30; display: flex; justify-content: center; align-items: flex-end; background: #0007; }
 .sh-card { width: min(560px, 100vw); max-height: 80vh; display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--bar); border: 1px solid var(--hover); border-radius: 12px 12px 0 0; box-shadow: 0 -8px 30px #000c; }

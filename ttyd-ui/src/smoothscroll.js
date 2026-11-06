@@ -40,9 +40,14 @@ class SmoothScroll {
     // tmux repaints its status line (clock) every so often: small writes without a line break leave the history as is
     if (data && data.length < 200 && !(typeof data === 'string' ? /[\r\n]/.test(data) : data.includes(10) || data.includes(13))) return;
     this.outSeq++;
+    this.warm(400);
+  }
+
+  /** Fetch the history ahead after ms (on a touch screen), e.g. after connecting or switching to the tab. */
+  warm(ms) {
     if (!COARSE) return;
     clearTimeout(this.warmTimer);
-    this.warmTimer = setTimeout(() => this.prefetch(), 400);
+    this.warmTimer = setTimeout(() => this.prefetch(), ms);
   }
 
   /** Fetch the history ahead (when a finger lands, or after output went quiet) unless a current copy exists. */
@@ -90,6 +95,7 @@ class SmoothScroll {
     this.state = 'active';
     this.pending = 0;
     this.ov.scrollTop = this.ov.scrollHeight;
+    if (this.s._touchSel) this.s._touchSel.attach(this);   // a selection made on the live screen carries over
     this._by(pending * this.cellH);
   }
 
@@ -97,10 +103,12 @@ class SmoothScroll {
     const ov = this.ov;
     if (!ov) return;
     ov.scrollTop += px;
+    if (this.s._touchSel && this.s._touchSel.active) this.s._touchSel._place();
     if (px > 0 && ov.scrollTop >= ov.scrollHeight - ov.clientHeight - 0.5) this.close();   // back at the live screen
   }
 
   close() {
+    if (this.ov && this.s._touchSel) this.s._touchSel.detach(this);   // a selection goes back to the live screen
     this.seq++;
     this.pending = 0;
     this.state = 'idle';
@@ -117,6 +125,8 @@ class SmoothScroll {
     const er = el.getBoundingClientRect();
     this.cellH = r.height / term.rows;
     const cellW = r.width / term.cols;
+    this.lines = lines;
+    this.cellW = cellW;
     const theme = term.options.theme || {};
     const family = term.options.fontFamily;
     const size = term.options.fontSize;

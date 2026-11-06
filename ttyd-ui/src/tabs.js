@@ -129,7 +129,12 @@ class Tabs {
       onBell: () => this._badge(tab, 'bell'),
       onActivity: () => this._badge(tab, 'activity'),
     }, { id: leaf.id, fontSize: window.innerWidth < 600 ? 12 : 14, persistent: true, query: '?arg=attach&arg=' + leaf.id + (pane.host ? '&arg=' + pane.host : '') });
-    leafEl.addEventListener('pointerdown', () => this.focusPane(tab, pane.id), true);
+    leafEl.addEventListener('pointerdown', (e) => {
+      // A finger on the pane that already has focus must not focus (= open the keyboard) yet: it may be a swipe or a
+      // long-press. A plain tap still focuses it afterwards, through xterm's own click handling.
+      if (e.pointerType === 'touch' && tab.focus === pane.id) return;
+      this.focusPane(tab, pane.id);
+    }, true);
     closeEl.addEventListener('click', (e) => { e.stopPropagation(); this.closePane(tab, pane.id); });
     tab.panes.push(pane);
     return pane;
