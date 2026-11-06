@@ -33,6 +33,7 @@ const js = [
   read('src', 'store.js'),
   read('src', 'control.js'),
   read('src', 'search.js'),
+  read('src', 'smoothscroll.js'),
   read('src', 'hosts.js'),
   read('src', 'touch.js'),
   read('src', 'keybar.js'),

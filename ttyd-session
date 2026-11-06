@@ -10,6 +10,8 @@
 #   ttyd-session hosts         print the saved hosts (key + label) between TTYD-HOSTS-BEGIN / TTYD-HOSTS-END
 #   ttyd-session list          print our sessions between TTYD-LIST-BEGIN / TTYD-LIST-END
 #   ttyd-session capture <id>  print the session's scrollback text between TTYD-CAP-BEGIN / TTYD-CAP-END
+#   ttyd-session capture-ansi <id>  the last 5000 lines WITH colours between TTYD-CAPA-BEGIN / TTYD-CAPA-END, after a
+#                              first line ALT=0|1 (an app such as vim owns the alternate screen); used for smooth touch scrolling
 # <id> must be exactly 't' + 10 lowercase hex digits. Anything else exits 2 without running anything
 # and without echoing the input. Input is never passed to a shell: it is only matched by `case`
 # patterns and, once validated, used as part of a tmux argument (always an argv element, no eval).
@@ -122,6 +124,16 @@ case "$1" in
     # control characters other than newline/tab are stripped
     tm capture-pane -p -J -S - -t "=ttyd-$2:" 2>/dev/null | tr -d '\r\000-\010\013\014\016-\037\177'
     echo "TTYD-CAP-END"
+    sleep 0.3    # same ttyd exit race as in `list`
+    exit 0
+    ;;
+  capture-ansi)
+    [ "$#" -eq 2 ] && valid_id "$2" || reject
+    echo "TTYD-CAPA-BEGIN"
+    tm display-message -p -t "=ttyd-$2:" 'ALT=#{alternate_on}' 2>/dev/null
+    # keep ESC (octal 033) for the colour codes; every other control character except newline/tab is stripped
+    tm capture-pane -p -e -S -5000 -t "=ttyd-$2:" 2>/dev/null | tr -d '\r\000-\010\013\014\016-\032\034-\037\177'
+    echo "TTYD-CAPA-END"
     sleep 0.3    # same ttyd exit race as in `list`
     exit 0
     ;;

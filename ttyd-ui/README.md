@@ -125,10 +125,14 @@ Vendored: fit 0.10.0, webgl 0.18.0, web-links 0.11.0, trzsz.js 1.1.6 (checksumme
 - **Shell exit** (`exit`, or the SSH session ending) ends the session: the tab shows "closed", no auto-retry, Enter starts
   a new one. A dropped network connection auto-reconnects (backoff 1s..15s, 10 tries, then use the reconnect button).
 - **Scrolling:** tmux uses the alternate screen, so the browser's own scrollback is empty. The wheel is turned into
-  keys that tmux interprets (2 lines per step, paced 4 ms apart): on the normal shell screen it enters tmux copy-mode and
+  keys that tmux interprets (2, 6 or 16 lines per key depending on speed, paced 4 ms apart): on the normal shell screen it enters tmux copy-mode and
   scrolls the 50000-line history (leaves by itself at the bottom; typing also returns you to the prompt); while a
   full-screen app owns the screen (`less`, `man`, `vim`...) it sends that app Up/Down arrows, as plain xterm.js would.
   Scrollback search therefore asks the server (`capture`) instead of using xterm's search addon.
+  **Touch:** a one-finger swipe scrolls too. On the normal shell screen the page fetches the pane's last 5000 lines with
+  colours (`capture-ansi`) and shows them in a layer over the terminal (`src/smoothscroll.js`) that scrolls by pixel, 1:1 with
+  the finger plus a fling; scrolling back to the bottom, typing or a tap removes it. Full-screen apps and apps with mouse
+  reporting (Claude's full-screen view) get the key / wheel-report scrolling instead, which can only move line by line.
 - **No tmux prefix key** by design; tmux windows/panes are not available (splits are done by the UI, one tmux session per pane).
 - **Right-click paste** needs a secure context (https or localhost); on plain-http LAN/Tailscale it falls back to the
   browser's own menu, and Ctrl+Shift+V works everywhere. **OSC 52 remote copy** (e.g. vim/tmux `set-clipboard`) also needs
