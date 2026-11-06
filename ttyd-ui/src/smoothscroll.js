@@ -11,6 +11,8 @@
  * Not used (the caller falls back to tmux keys) when an app owns the alternate screen (vim, less) or mouse reporting
  * is on, or when the history is no longer than the screen.
  */
+const COARSE = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+
 class SmoothScroll {
   constructor(session) {
     this.s = session;
@@ -19,7 +21,9 @@ class SmoothScroll {
     this.cellH = 17;
     this.pending = 0;        // lines swiped while the history is still loading
     this.seq = 0;
-    this.pre = null;         // { p: promise, at: ms } history fetched ahead, when a finger lands at the bottom
+    this.pre = null;         // { p, at, seq } history fetched ahead
+    this.outSeq = 0;         // bumped on every terminal output: a fetched history is exact while it is unchanged
+    this.warmTimer = 0;
     this.skipUntil = 0;      // after a failed/unsuitable load, use the key-based scroll for a while
   }
 
@@ -31,13 +35,24 @@ class SmoothScroll {
       s.term.modes.mouseTrackingMode === 'none' && performance.now() >= this.skipUntil;
   }
 
-  /** Start fetching the history as soon as a finger lands, so the first swipe finds it ready instead of waiting. */
+  /** Terminal output arrived. Once it goes quiet, fetch the history ahead so the first swipe finds it ready. */
+  noteOutput(data) {
+    // tmux repaints its status line (clock) every so often: small writes without a line break leave the history as is
+    if (data && data.length < 200 && !(typeof data === 'string' ? /[\r\n]/.test(data) : data.includes(10) || data.includes(13))) return;
+    this.outSeq++;
+    if (!COARSE) return;
+    clearTimeout(this.warmTimer);
+    this.warmTimer = setTimeout(() => this.prefetch(), 1200);
+  }
+
+  /** Fetch the history ahead (when a finger lands, or after output went quiet) unless a current copy exists. */
   prefetch() {
     if (this.state !== 'idle' || !this._eligible()) return;
+    if (this.pre && this.pre.seq === this.outSeq) return;
     if (this.pre && performance.now() - this.pre.at < 2000) return;
     const p = captureAnsi(this.s.id);
     p.catch(() => {});
-    this.pre = { p, at: performance.now() };
+    this.pre = { p, at: performance.now(), seq: this.outSeq };
   }
 
   /** True while swipes drive the history layer (open, loading, or about to open): scroll 1:1 with the finger. */
@@ -57,7 +72,7 @@ class SmoothScroll {
     this.pending = d;
     const seq = ++this.seq;
     let data = null;
-    const pre = this.pre && performance.now() - this.pre.at < 2000 ? this.pre.p : null;
+    const pre = this.pre && (this.pre.seq === this.outSeq || performance.now() - this.pre.at < 2000) ? this.pre.p : null;
     this.pre = null;
     try { data = await (pre || captureAnsi(this.s.id)); } catch (e) { /* fall back below */ }
     if (seq !== this.seq || this.state !== 'loading') return;
@@ -70,6 +85,7 @@ class SmoothScroll {
       this.s._scrollTmux(pending);      // the swipe so far still counts
       return;
     }
+    const tb = performance.now();
     this._build(data.lines);
     this.state = 'active';
     this.pending = 0;
@@ -85,6 +101,7 @@ class SmoothScroll {
   }
 
   close() {
+    if (this.state !== 'idle') this.noteOutput();   // the screen is about to change: refresh the stored history
     this.seq++;
     this.pending = 0;
     this.state = 'idle';
@@ -118,10 +135,39 @@ class SmoothScroll {
       'font-variant-ligatures:none;font-kerning:none;';
     const pal = ansiPalette(theme);
     const st = { fg: null, bg: null, bold: false, dim: false, italic: false, underline: false, inverse: false, strike: false };
-    const frag = document.createDocumentFragment();
-    for (const line of lines) frag.appendChild(ansiRow(line, st, pal, theme, this.cellH));
-    ov.appendChild(frag);
+    // Only the newest rows are built now so the layer opens at once; older chunks are inserted above them in the
+    // background. A spacer stands in for the rows not built yet, so the height and every position stay the same.
+    const CHUNK = 150;
+    const starts = [];                                   // starts[k] = style state at the beginning of chunk k
+    for (let i = 0; i < lines.length; i++) {
+      if (i % CHUNK === 0) starts.push(Object.assign({}, st));
+      lines[i].replace(/\x1b\[([0-9;:]*)m/g, (m0, p) => { applySgr(st, p, pal); return ''; });
+    }
+    const spacer = document.createElement('div');
+    ov.appendChild(spacer);
     el.appendChild(ov);
+    this.ov = ov;
+    let k = starts.length;
+    let top = lines.length;                              // rows [top, end) are built
+    const buildChunk = () => {
+      k--;
+      const from = k * CHUNK;
+      const frag = document.createDocumentFragment();
+      const cs = Object.assign({}, starts[k]);
+      for (let i = from; i < top; i++) frag.appendChild(ansiRow(lines[i], cs, pal, theme, this.cellH));
+      top = from;
+      spacer.style.height = (top * this.cellH) + 'px';
+      spacer.after(frag);
+    };
+    spacer.style.height = (lines.length * this.cellH) + 'px';
+    buildChunk();                                        // the newest (partial) chunk
+    if (k > 0) buildChunk();                             // and one more, so a full screen is always there
+    const fill = () => {
+      if (this.ov !== ov || k === 0) return;
+      buildChunk();
+      setTimeout(fill, 16);
+    };
+    setTimeout(fill, 16);
     this.ov = ov;
   }
 }
