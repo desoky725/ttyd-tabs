@@ -125,7 +125,7 @@ Vendored: fit 0.10.0, webgl 0.18.0, web-links 0.11.0, trzsz.js 1.1.6 (checksumme
 - **Shell exit** (`exit`, or the SSH session ending) ends the session: the tab shows "closed", no auto-retry, Enter starts
   a new one. A dropped network connection auto-reconnects (backoff 1s..15s, 10 tries, then use the reconnect button).
 - **Scrolling:** tmux uses the alternate screen, so the browser's own scrollback is empty. The wheel is turned into
-  keys that tmux interprets (3 lines per step, paced 8 ms apart): on the normal shell screen it enters tmux copy-mode and
+  keys that tmux interprets (1 line per step, paced 8 ms apart): on the normal shell screen it enters tmux copy-mode and
   scrolls the 50000-line history (leaves by itself at the bottom; typing also returns you to the prompt); while a
   full-screen app owns the screen (`less`, `man`, `vim`...) it sends that app Up/Down arrows, as plain xterm.js would.
   Scrollback search therefore asks the server (`capture`) instead of using xterm's search addon.

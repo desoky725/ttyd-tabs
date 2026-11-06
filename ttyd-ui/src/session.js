@@ -233,11 +233,12 @@ class Session {
   /** Scroll tmux's history by `lines` (negative = up) with the stateless keys bound in ttyd-tmux.conf. */
   _scrollTmux(lines) {
     this.wheelAcc += lines;
-    // Each key sequence = 3 lines (see ttyd-tmux.conf). They are released one by one, 8 ms apart (see _queueKeys).
-    const n = Math.min(Math.trunc(Math.abs(this.wheelAcc) / 3), 8);
-    if (n === 0) return;
+    // Each key sequence = 1 line (see ttyd-tmux.conf), so the view moves in single-line steps. They are released one
+    // by one, 8 ms apart (see _drainKeys); the backlog is capped so scrolling stops soon after the finger does.
+    const n = Math.min(Math.trunc(Math.abs(this.wheelAcc)), 24, Math.max(0, 40 - this.keyQueue.length));
+    if (n === 0) { this.wheelAcc %= 1; return; }
     const up = this.wheelAcc < 0;
-    this.wheelAcc %= 3; // keep only the sub-step remainder; distance beyond the cap is dropped
+    this.wheelAcc %= 1; // keep only the sub-line remainder; distance beyond the cap is dropped
     if (up) this.scrolled = true;
     for (let i = 0; i < n; i++) this.keyQueue.push(up ? TMUX_KEY.up : TMUX_KEY.down);
     if (!this.keyTimer) this._drainKeys();
