@@ -271,6 +271,7 @@ class Session {
       stopFling();
       if (this.selectMode || e.touches.length !== 1) { t = null; return; }
       t = { y: e.touches[0].clientY, x: e.touches[0].clientX, acc: 0, moved: false, v: 0, ts: e.timeStamp };
+      this._smooth.prefetch();
     }, { passive: true });
     el.addEventListener('touchmove', (e) => {
       if (!t || this.selectMode || e.touches.length !== 1) return;

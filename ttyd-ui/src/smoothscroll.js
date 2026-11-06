@@ -19,6 +19,7 @@ class SmoothScroll {
     this.cellH = 17;
     this.pending = 0;        // lines swiped while the history is still loading
     this.seq = 0;
+    this.pre = null;         // { p: promise, at: ms } history fetched ahead, when a finger lands at the bottom
     this.skipUntil = 0;      // after a failed/unsuitable load, use the key-based scroll for a while
   }
 
@@ -28,6 +29,15 @@ class SmoothScroll {
     const s = this.s;
     return !!s.id && s.persistent && s.state === 'connected' && s.term.buffer.active.type === 'alternate' &&
       s.term.modes.mouseTrackingMode === 'none' && performance.now() >= this.skipUntil;
+  }
+
+  /** Start fetching the history as soon as a finger lands, so the first swipe finds it ready instead of waiting. */
+  prefetch() {
+    if (this.state !== 'idle' || !this._eligible()) return;
+    if (this.pre && performance.now() - this.pre.at < 2000) return;
+    const p = captureAnsi(this.s.id);
+    p.catch(() => {});
+    this.pre = { p, at: performance.now() };
   }
 
   /** True while swipes drive the history layer (open, loading, or about to open): scroll 1:1 with the finger. */
@@ -47,7 +57,9 @@ class SmoothScroll {
     this.pending = d;
     const seq = ++this.seq;
     let data = null;
-    try { data = await captureAnsi(this.s.id); } catch (e) { /* fall back below */ }
+    const pre = this.pre && performance.now() - this.pre.at < 2000 ? this.pre.p : null;
+    this.pre = null;
+    try { data = await (pre || captureAnsi(this.s.id)); } catch (e) { /* fall back below */ }
     if (seq !== this.seq || this.state !== 'loading') return;
     const rows = this.s.term.rows;
     const pending = this.pending;
