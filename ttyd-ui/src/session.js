@@ -105,6 +105,7 @@ class Session {
         if (d === '\r') this.reconnectNow(); // Enter restarts an ended session, like stock ttyd
         return;
       }
+      this._smooth.outSeq++;   // typing changes the screen
       this._smooth.close();
       this.keyQueue.length = 0; // typing wins over scrolling still in flight
       if (this.scrolled) { this.scrolled = false; this._send(CMD.INPUT, TMUX_KEY.cancel); } // leave scrollback first
@@ -457,6 +458,7 @@ class Session {
   _termWrite(data) {
     // Activity = output well after (re)attach; the repaint tmux sends on attach is not "new activity".
     if (this.cb.onActivity && Date.now() - this.openedAt > 1500) this.cb.onActivity();
+    this._smooth.noteOutput(data);
     this.written += data.length;
     if (this.written > FLOW.limit) {
       this.term.write(data, () => {
