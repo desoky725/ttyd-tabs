@@ -39,6 +39,10 @@ expect 2 "capture glob" $W capture 't*'
 expect 2 "capture option-like" $W capture -pINJECTED
 expect 2 "capture extra arg" $W capture t0123456789 t0123456789
 expect 2 "capture uppercase" $W capture tABCDEF0123
+expect 2 "capture-ansi no id" $W capture-ansi
+expect 2 "capture-ansi bad id" $W capture-ansi 't0123456;id'
+expect 2 "capture-ansi option-like" $W capture-ansi -pINJECTED
+expect 2 "capture-ansi extra arg" $W capture-ansi t0123456789 t0123456789
 expect 2 "attach unknown host" $W attach t0123456789 nosuchhost
 expect 2 "attach host uppercase" $W attach t0123456789 SHELLA
 expect 2 "attach host semicolon" $W attach t0123456789 'shella;touch /tmp/pwned'

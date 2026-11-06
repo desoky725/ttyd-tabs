@@ -85,6 +85,19 @@ async function captureSession(id) {
   return m[1].split('\n').map((l) => l.replace(/\s+$/, ''));   // tmux pads lines with spaces
 }
 
+/** Last 5000 lines of a session with colour codes, as { alt, lines }. alt: an app owns the alternate screen. */
+async function captureAnsi(id) {
+  let m = null;
+  for (let attempt = 0; attempt < 2 && !m; attempt++) {
+    const out = (await ttydControl(['capture-ansi', id], 20000, 'TTYD-CAPA-END')).replace(/\r/g, '');
+    m = out.match(/TTYD-CAPA-BEGIN\nALT=([01])\n([\s\S]*)TTYD-CAPA-END/);
+  }
+  if (!m) throw new Error('unexpected reply from server');
+  const lines = m[2].split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();   // the text ends with a newline
+  return { alt: m[1] === '1', lines };
+}
+
 function ago(epochSec) {
   const s = Math.max(0, Math.floor(Date.now() / 1000 - epochSec));
   if (s < 60) return 'just now';

@@ -13,7 +13,9 @@ const CMD = { OUTPUT: '0', TITLE: '1', PREFS: '2', INPUT: '0', RESIZE: '1', PAUS
 // Same numbers as stock ttyd.
 const FLOW = { limit: 100000, highWater: 10, lowWater: 4 };
 // Keys bound in ttyd-tmux.conf (Alt+PageUp / Alt+PageDown / Alt+End), see _onWheel.
-const TMUX_KEY = { up: '\x1b[5;3~', down: '\x1b[6;3~', cancel: '\x1b[1;3F' };
+// Step sizes in lines: 2 = Alt, 6 = Alt+Shift, 16 = Ctrl+Alt (xterm modifier parameters 3, 4, 7).
+const TMUX_STEPS = [[16, 7], [6, 4], [2, 3]];
+const TMUX_KEY = { cancel: '\x1b[1;3F' };
 const RETRY = { baseMs: 1000, maxMs: 15000, maxAttempts: 10 };
 
 const FONT = '"JetBrains Mono","Fira Code","Cascadia Mono",Consolas,"Liberation Mono",Menlo,monospace';
@@ -38,6 +40,8 @@ class Session {
     this.cb = cb;
     this.query = opts.query || '';
     this.persistent = !!opts.persistent;
+    this.id = opts.id || '';
+    this._smooth = new SmoothScroll(this);   // pixel-smooth touch scrolling, see smoothscroll.js
     this.wheelAcc = 0;
     this.mods = { ctrl: false, alt: false };  // one-shot modifiers armed from the on-screen key bar
     this.keyQueue = [];  // pending scroll key sequences, see _drainKeys
@@ -101,6 +105,7 @@ class Session {
         if (d === '\r') this.reconnectNow(); // Enter restarts an ended session, like stock ttyd
         return;
       }
+      this._smooth.close();
       this.keyQueue.length = 0; // typing wins over scrolling still in flight
       if (this.scrolled) { this.scrolled = false; this._send(CMD.INPUT, TMUX_KEY.cancel); } // leave scrollback first
       d = this._applyMods(d);
@@ -109,7 +114,7 @@ class Session {
       if (this.cb.onInput && !transferring) this.cb.onInput(d);   // broadcast mirrors typed/pasted input from here
     });
     term.onBinary((s) => this.trzsz.processBinaryInput(s));
-    term.onResize(({ cols, rows }) => this.trzsz.setTerminalColumns(cols));
+    term.onResize(({ cols, rows }) => { this._smooth.close(); this.trzsz.setTerminalColumns(cols); });
     term.onResize(({ cols, rows }) => this._send(CMD.RESIZE, JSON.stringify({ columns: cols, rows })));
     term.onBell(() => this.cb.onBell && this.cb.onBell());
     term.onTitleChange((t) => t && this.cb.onTitle(t));
@@ -233,16 +238,22 @@ class Session {
   /** Scroll tmux's history by `lines` (negative = up) with the stateless keys bound in ttyd-tmux.conf. */
   _scrollTmux(lines) {
     this.wheelAcc += lines;
-    // Each key sequence = 2 lines (see ttyd-tmux.conf): fine enough to look smooth, coarse enough to keep up with a
-    // fast flick. They are released one by one, 4 ms apart (see _drainKeys); the backlog is capped so scrolling
-    // stops soon after the finger does.
-    const n = Math.min(Math.trunc(Math.abs(this.wheelAcc) / 2), 40, Math.max(0, 80 - this.keyQueue.length));
-    if (n === 0) { this.wheelAcc %= 2; return; }
     const up = this.wheelAcc < 0;
-    this.wheelAcc %= 2; // keep only the sub-step remainder; distance beyond the cap is dropped
-    if (up) this.scrolled = true;
-    for (let i = 0; i < n; i++) this.keyQueue.push(up ? TMUX_KEY.up : TMUX_KEY.down);
-    if (!this.keyTimer) this._drainKeys();
+    let left = Math.abs(this.wheelAcc);
+    // Biggest steps first, so a fast swipe is a handful of keys (each one is a full tmux redraw), a slow one 2-line steps.
+    // The backlog is capped so scrolling stops soon after the finger does.
+    const room = Math.max(0, 24 - this.keyQueue.length);
+    let sent = 0;
+    for (const [size, mod] of TMUX_STEPS) {
+      while (left >= size && sent < room) {
+        this.keyQueue.push('\x1b[' + (up ? 5 : 6) + ';' + mod + '~');
+        left -= size; sent++;
+      }
+    }
+    if (sent === 0 && left >= 2) left = left % 2;   // queue full: drop the distance
+    this.wheelAcc = (up ? -1 : 1) * (sent === room && room > 0 ? 0 : left);   // keep the sub-step remainder
+    if (sent && up) this.scrolled = true;
+    if (sent && !this.keyTimer) this._drainKeys();
   }
 
   // One-finger swipe = mouse wheel. A touch screen produces no wheel events, so without this nothing scrolls.
@@ -251,7 +262,8 @@ class Session {
   //  - otherwise: xterm's own scrollback.
   // A tap (no movement past the threshold) is left alone so it still focuses the terminal / opens the keyboard.
   _initTouchScroll(el) {
-    const GAIN = 2.5;          // lines scrolled per line of finger travel: a phone swipe is short
+    const GAIN = 2.5;          // key-based scroll: lines scrolled per line of finger travel (a phone swipe is short)
+    const SMOOTH_GAIN = 1;     // pixel-smooth layer: 1 = the text follows the finger exactly
     let t = null;
     let fling = 0;             // requestAnimationFrame id of the momentum loop
     const stopFling = () => { if (fling) { cancelAnimationFrame(fling); fling = 0; } };
@@ -268,11 +280,12 @@ class Session {
       e.preventDefault();
       const rect = el.querySelector('.xterm-screen').getBoundingClientRect();
       const cellH = rect.height / this.term.rows || 17;
-      const d = (t.y - tc.clientY) / cellH * GAIN;   // finger moving up = content moving up = wheel down = positive
+      const d = (t.y - tc.clientY) / cellH * (this._smooth.wanted() ? SMOOTH_GAIN : GAIN);   // finger moving up = content moving up = wheel down = positive
       const dt = Math.max(1, e.timeStamp - t.ts);
       t.v = 0.8 * t.v + 0.2 * (d / dt);              // smoothed lines per ms
       t.ts = e.timeStamp;
       t.y = tc.clientY; t.x = tc.clientX;
+      if (this._smooth.scroll(d)) return;            // pixel-smooth history layer (fractional lines)
       t.acc += d;
       const lines = Math.trunc(t.acc);
       if (lines === 0) return;
@@ -282,14 +295,22 @@ class Session {
     const end = (e) => {
       const s = t;
       t = null;
+      if (s && !s.moved && e.type === 'touchend' && this._smooth.active) { this._smooth.close(); return; }   // tap = back to the live screen
       if (!s || !s.moved || e.type === 'touchcancel' || Math.abs(s.v) < 0.01 || e.timeStamp - s.ts > 80) return;
       // momentum: keep scrolling with the release speed, slowing down by ~5% per frame
       let v = Math.max(-0.12, Math.min(0.12, s.v)), acc = 0, last = performance.now();
       const step = (now) => {
-        acc += v * (now - last); last = now;
+        const dd = v * (now - last);
+        last = now;
         v *= 0.95;
-        const lines = Math.trunc(acc);
-        if (lines) { acc -= lines; this._touchScroll(lines, { clientX: s.x, clientY: s.y }); }
+        const was = this._smooth.active;
+        if (this._smooth.scroll(dd)) {
+          if (was && !this._smooth.active) v = 0;   // reached the live screen
+        } else {
+          acc += dd;
+          const lines = Math.trunc(acc);
+          if (lines) { acc -= lines; this._touchScroll(lines, { clientX: s.x, clientY: s.y }); }
+        }
         fling = Math.abs(v) > 0.004 ? requestAnimationFrame(step) : 0;
       };
       fling = requestAnimationFrame(step);
@@ -531,6 +552,7 @@ class Session {
       requestAnimationFrame(() => { if (this.active) this.fit(); });
       if (focused) this.term.focus();
     } else {
+      this._smooth.close();
       this._disableWebgl();
     }
   }
@@ -559,6 +581,7 @@ class Session {
     this.gen++;
     clearTimeout(this.timer);
     clearTimeout(this.keyTimer);
+    this._smooth.close();
     cancelAnimationFrame(this._raf);
     this.ro.disconnect();
     this._dropSocket();

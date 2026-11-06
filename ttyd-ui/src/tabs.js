@@ -128,7 +128,7 @@ class Tabs {
       // Badges only for tabs you are not looking at; cleared when the tab is activated.
       onBell: () => this._badge(tab, 'bell'),
       onActivity: () => this._badge(tab, 'activity'),
-    }, { fontSize: window.innerWidth < 600 ? 12 : 14, persistent: true, query: '?arg=attach&arg=' + leaf.id + (pane.host ? '&arg=' + pane.host : '') });
+    }, { id: leaf.id, fontSize: window.innerWidth < 600 ? 12 : 14, persistent: true, query: '?arg=attach&arg=' + leaf.id + (pane.host ? '&arg=' + pane.host : '') });
     leafEl.addEventListener('pointerdown', () => this.focusPane(tab, pane.id), true);
     closeEl.addEventListener('click', (e) => { e.stopPropagation(); this.closePane(tab, pane.id); });
     tab.panes.push(pane);
