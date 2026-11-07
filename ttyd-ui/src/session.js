@@ -179,6 +179,39 @@ class Session {
       this._raf = requestAnimationFrame(() => this.fit());
     });
     this.ro.observe(el);
+
+    // Coming back to the page (app switch, screen on, network back): the phone has usually killed the socket meanwhile.
+    this._hiddenAt = document.hidden ? performance.now() : 0;
+    this._visibleAt = 0;
+    this._quietLeft = 0;       // quiet immediate reconnects still allowed after a wake-up
+    this._retryPending = false;
+    this._onWake = () => this._visibility();
+    document.addEventListener('visibilitychange', this._onWake);
+    window.addEventListener('online', this._onWake);
+    window.addEventListener('pageshow', this._onWake);
+  }
+
+  _visibility() {
+    if (this.stopped) return;
+    const now = performance.now();
+    if (document.hidden) { this._hiddenAt = this._hiddenAt || now; return; }
+    const away = this._hiddenAt ? now - this._hiddenAt : 0;
+    this._hiddenAt = 0;
+    this._visibleAt = now;
+    this._wake(away);
+  }
+
+  /** Reconnect at once, without the retry delay or the "connection lost" message, if the socket is gone or surely stale. */
+  _wake(away) {
+    if (this.state === 'closed' || !this.opened) return;
+    const gone = !this.ws || this.ws.readyState > 1;
+    // a persistent session survives on the server (tmux), so a long absence is worth a fresh attach: the old socket is probably dead
+    const stale = !gone && this.persistent && away > 20000;
+    if (gone || stale) {
+      this._quietLeft = 1;
+      this.attempt = 0;
+      this.connect();
+    }
   }
 
   /** Arm/disarm a one-shot modifier ('ctrl' | 'alt') for the next input (on-screen Ctrl/Alt keys). */
@@ -434,6 +467,7 @@ class Session {
 
   async connect() {
     clearTimeout(this.timer);
+    this._retryPending = false;
     const gen = ++this.gen;
     this._dropSocket();
     this._setState(this.opened ? 'reconnecting' : 'connecting');
@@ -461,6 +495,7 @@ class Session {
       if (!this.persistent) this.term.write('\x1b[2m[reconnected - this is a new session]\x1b[0m\r\n');
     }
     this.opened = true;
+    this._quietLeft = 0;
     this.openedAt = Date.now();
     this.scrolled = false;
     this.attempt = 0;
@@ -514,6 +549,14 @@ class Session {
         ? '\r\n\x1b[2m[session ended or taken over by another browser - press Enter to start/reattach]\x1b[0m\r\n'
         : '\r\n\x1b[2m[session ended - press Enter to start a new one]\x1b[0m\r\n');
       this._setState('closed');
+    } else if (document.hidden && this.opened) {
+      this._setState('reconnecting');            // nobody is looking: reconnect when the page is back (see _wake)
+    } else if (!document.hidden && this.opened && (this._quietLeft > 0 || (this._visibleAt && performance.now() - this._visibleAt < 2500))) {
+      // the socket died while the page was away and we just noticed: reconnect now, quietly (one shot, then normal backoff)
+      this._quietLeft = 0;
+      this._visibleAt = 0;
+      this.attempt = 0;
+      this.connect();
     } else {
       if (this.attempt === 0) this.term.write('\r\n\x1b[33m[connection lost - reconnecting...]\x1b[0m\r\n');
       this._scheduleRetry(this.gen);
@@ -529,7 +572,8 @@ class Session {
     const delay = Math.min(RETRY.maxMs, RETRY.baseMs * 2 ** this.attempt) * (0.75 + Math.random() * 0.5);
     this.attempt++;
     this._setState('reconnecting');
-    this.timer = setTimeout(() => { if (gen === this.gen) this.connect(); }, delay);
+    this._retryPending = true;
+    this.timer = setTimeout(() => { this._retryPending = false; if (gen === this.gen) this.connect(); }, delay);
   }
 
   /** Manual reconnect / retry-now. Always starts a NEW process on the server. */
@@ -621,6 +665,9 @@ class Session {
     this._smooth.close();
     cancelAnimationFrame(this._raf);
     this.ro.disconnect();
+    document.removeEventListener('visibilitychange', this._onWake);
+    window.removeEventListener('online', this._onWake);
+    window.removeEventListener('pageshow', this._onWake);
     this._dropSocket();
     this._disableWebgl();
     this.term.dispose();
