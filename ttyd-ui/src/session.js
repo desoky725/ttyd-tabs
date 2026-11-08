@@ -88,8 +88,13 @@ class Session {
       if (data.indexOf(';') < 0 || !pd || pd === '?' || pd.length > 1400000) return true;
       try {
         const text = new TextDecoder().decode(Uint8Array.from(atob(pd), (c) => c.charCodeAt(0)));
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(() => {});
-        else this.cb.onNotice('Remote copy needs https (clipboard API unavailable here).');
+        // async clipboard, else (plain http / no user gesture) the legacy copy; if the browser refuses both, offer a
+        // sheet with the text and a Copy button (a tap there is a user gesture, so it works)
+        this.copyText(text).then((ok) => {
+          if (ok) this.cb.onNotice('Copied');
+          else if (typeof TouchTools !== 'undefined') TouchTools.showCopySheet(text);
+          else this.cb.onNotice('Remote copy was blocked by the browser (needs https or a tap).');
+        });
       } catch (e) { /* bad base64 */ }
       return true;
     });
